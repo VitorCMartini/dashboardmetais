@@ -1,0 +1,173 @@
+# ====================================================================
+# .gitignore - Dashboard Metais Pesados em Pólen
+# ====================================================================
+# Protege dados sensíveis, credenciais e arquivos temporários
+# Conforme 'Arquitetura de Segurança' do CONTEXTO_TECNICO.md
+# ====================================================================
+
+# DADOS SENSÍVEIS - NUNCA VERSIONAR
+# --------------------------------------------------------------------
+# Arquivos Excel com dados reais
+*.xlsx
+!metadados.xlsx  # Exceção: metadados podem ser versionados (não contêm dados sensíveis)
+
+# Arquivos CSV com dados
+*.csv
+
+# Arquivos Parquet
+*.parquet
+
+# Arquivos de banco de dados
+*.db
+*.sqlite
+*.sqlite3
+
+# Arquivos de dados processados
+dados_processados/
+data/
+output/
+exports/
+
+# CREDENCIAIS E SEGREDOS
+# --------------------------------------------------------------------
+# Streamlit secrets
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# Variáveis de ambiente
+.env
+.env.local
+.env.*.local
+
+# Chaves e certificados
+*.pem
+*.key
+*.crt
+
+# PYTHON
+# --------------------------------------------------------------------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# LOGS E TEMPORÁRIOS
+# --------------------------------------------------------------------
+# Logs de processamento
+*.log
+etl_log.txt
+processamento.log
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Backups
+*.bak
+*.backup
+
+# IDES E EDITORES
+# --------------------------------------------------------------------
+# VSCode
+.vscode/
+.history/
+
+# PyCharm
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# SISTEMA OPERACIONAL
+# --------------------------------------------------------------------
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+.directory
+
+# ESPECÍFICOS DO PROJETO
+# --------------------------------------------------------------------
+# Scripts de teste temporários
+explore.py
+test_*.py
+debug_*.py
+
+# Arquivos de teste exportados
+teste_*.xlsx
+teste_*.log
+teste_*.csv
+
+# Cache de dados
+cache/
+.cache/
+
+# Relatórios temporários
+relatorios_temp/
+
+# ====================================================================
+# EXCEÇÕES (Arquivos que DEVEM ser versionados)
+# ====================================================================
+!.gitignore
+!README.md
+!requirements.txt
+!CONTEXTO_TECNICO.md
+!metadados.xlsx

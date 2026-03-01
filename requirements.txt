@@ -1,0 +1,61 @@
+# ====================================================================
+# DEPENDÊNCIAS - Dashboard de Análise de Metais Pesados em Pólen
+# ====================================================================
+# Projeto: Automação Analítica ICP-MS
+# Data: 28 de fevereiro de 2026
+# ====================================================================
+
+# Core: Manipulação de Dados
+# --------------------------------------------------------------------
+pandas>=2.0.0              # DataFrames e análise de dados
+numpy>=1.24.0              # Computação numérica
+openpyxl>=3.1.0            # Leitura/escrita de arquivos Excel (.xlsx)
+
+# Interface Web: Streamlit
+# --------------------------------------------------------------------
+streamlit>=1.28.0          # Framework para dashboard interativo
+streamlit-option-menu>=0.3.6  # Menu lateral aprimorado (opcional)
+
+# Visualização de Dados
+# --------------------------------------------------------------------
+plotly>=5.17.0             # Gráficos interativos
+matplotlib>=3.7.0          # Gráficos estáticos (fallback)
+seaborn>=0.12.0            # Visualizações estatísticas
+
+# Segurança e Autenticação
+# --------------------------------------------------------------------
+streamlit-authenticator>=0.2.3  # Sistema de autenticação para Streamlit
+bcrypt>=4.0.0              # Hash de senhas
+python-dotenv>=1.0.0       # Gerenciamento de variáveis de ambiente
+
+# Utilitários
+# --------------------------------------------------------------------
+python-dateutil>=2.8.2     # Manipulação avançada de datas
+pytz>=2023.3               # Timezone handling
+
+# Qualidade de Código (Desenvolvimento)
+# --------------------------------------------------------------------
+pytest>=7.4.0              # Framework de testes
+pytest-cov>=4.1.0          # Cobertura de testes
+black>=23.0.0              # Formatação de código
+flake8>=6.0.0              # Linting
+
+# Opcional: Exportação de Relatórios
+# --------------------------------------------------------------------
+reportlab>=4.0.0           # Geração de PDFs
+Pillow>=10.0.0             # Manipulação de imagens
+
+# Opcional: Performance
+# --------------------------------------------------------------------
+numexpr>=2.8.0             # Otimização de expressões numéricas
+bottleneck>=1.3.0          # Aceleração de operações pandas
+
+# ====================================================================
+# INSTALAÇÃO
+# ====================================================================
+# Para instalar todas as dependências:
+#   pip install -r requirements.txt
+#
+# Para instalar apenas o essencial (sem ferramentas de dev):
+#   pip install pandas numpy openpyxl streamlit plotly bcrypt python-dateutil
+# ====================================================================
