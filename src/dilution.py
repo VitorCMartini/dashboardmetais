@@ -219,6 +219,13 @@ def ler_planilha_massas(arquivo, matriz: str) -> Tuple[pd.DataFrame, pd.DataFram
     Lê o arquivo de massas (template preenchido) e devolve (df_massa, df_diluicao).
     Localiza as abas de forma tolerante a variações de nome.
     """
+    # Streamlit reutiliza o mesmo objeto de upload entre reruns; reposiciona o
+    # ponteiro para o início para permitir releitura.
+    if hasattr(arquivo, "seek"):
+        try:
+            arquivo.seek(0)
+        except Exception:
+            pass
     xls = pd.ExcelFile(arquivo)
     massa_sheet = _achar_sheet(xls.sheet_names, ["massa"]) or xls.sheet_names[0]
     dil_sheet = _achar_sheet(xls.sheet_names, ["dilu", "fd2"])

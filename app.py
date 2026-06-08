@@ -1334,29 +1334,29 @@ def _quant_sub_selecao_rsd(df, resultados_qc):
     with st.expander("⚠️ Passo 2 — Valores acima da curva (substituição manual por ICP-OES)"):
         _render_overrides_icpoes(df, cols_conc, classes)
 
-    if st.button("🔄 Gerar tabelas reduzidas (RSD ≤15% e ≤25%)", type="primary", key="btn_reduzir"):
-        if not cols_conc:
-            st.error("Selecione ao menos uma espécie.")
-        elif not classes:
-            st.error("Selecione ao menos uma classe de amostra.")
-        else:
-            df_base = quantification.aplicar_override_icpoes(
-                df, st.session_state.get('quant_overrides', {})
+    # Geração REATIVA das duas tabelas reduzidas (RSD ≤15% e ≤25%).
+    # Sem botão: o resultado fica sempre salvo em session_state, então os passos
+    # seguintes (FDT, TR%, mg/kg) encontram a tabela automaticamente.
+    if cols_conc and classes:
+        df_base = quantification.aplicar_override_icpoes(
+            df, st.session_state.get('quant_overrides', {})
+        )
+        tabelas = {}
+        for lim in (15.0, 25.0):
+            conc_view, mask, d_full = quantification.reduzir_tabela(
+                df_base, cols_conc, lim, tuple(classes)
             )
-            tabelas = {}
-            for lim in (15.0, 25.0):
-                conc_view, mask, d_full = quantification.reduzir_tabela(
-                    df_base, cols_conc, lim, tuple(classes)
-                )
-                tabelas[lim] = {'conc': conc_view, 'mask': mask, 'full': d_full}
-            st.session_state['quant_tabelas_rsd'] = tabelas
-            st.success(f"✅ Tabelas geradas para {len(conc_view)} amostra(s).")
+            tabelas[lim] = {'conc': conc_view, 'mask': mask, 'full': d_full}
+        st.session_state['quant_tabelas_rsd'] = tabelas
 
-    tabelas = st.session_state.get('quant_tabelas_rsd')
-    if tabelas:
+        n_amostras = len(tabelas[15.0]['conc'])
+        st.success(f"✅ Tabela reduzida pronta · {n_amostras} amostra(s) · salva automaticamente.")
         for lim in (15.0, 25.0):
             st.markdown(f"**📋 Tabela reduzida — RSD ≤ {int(lim)}%**  ·  células 🟥 = RSD acima do limite")
             _mostrar_tabela_destacada(tabelas[lim]['conc'], tabelas[lim]['mask'])
+    else:
+        st.session_state.pop('quant_tabelas_rsd', None)
+        st.warning("⚠️ Selecione ao menos uma espécie (coluna **Incluir**) e uma classe de amostra.")
 
 
 def _nomes_conc_atual(df):
@@ -1439,8 +1439,11 @@ def _quant_sub_tr(df):
 
     fdt_map = st.session_state.get('quant_fdt_map')
     cols_conc = st.session_state.get('quant_cols_conc')
-    if not fdt_map or not cols_conc:
-        st.warning("⚠️ Complete o Passo 1 (Seleção) e o Passo 5 (FDT) primeiro.")
+    if not cols_conc:
+        st.warning("⚠️ Selecione as espécies na sub-aba *1️⃣ Seleção & RSD*.")
+        return
+    if not fdt_map:
+        st.warning("⚠️ Suba o arquivo de massas na sub-aba *2️⃣ Diluição (FDT)* para calcular o TR%.")
         return
 
     material = st.selectbox(
@@ -1528,8 +1531,16 @@ def _quant_sub_resultado(df):
     fdt_map = st.session_state.get('quant_fdt_map')
     cols_conc = st.session_state.get('quant_cols_conc')
 
-    if not tabelas or not fdt_map or not cols_conc:
-        st.warning("⚠️ Complete o Passo 1 (Seleção & RSD) e o Passo 5 (FDT) primeiro.")
+    pendencias = []
+    if not cols_conc or not tabelas:
+        pendencias.append("**Passo 1** — selecione espécies e classes na sub-aba *1️⃣ Seleção & RSD*")
+    if not fdt_map:
+        if st.session_state.get('quant_fdt') is not None:
+            pendencias.append("**Passo 5** — o arquivo de massas foi lido, mas **nenhuma amostra casou** com o FDT; revise os nomes na sub-aba *2️⃣ Diluição (FDT)*")
+        else:
+            pendencias.append("**Passo 5** — suba o arquivo de massas na sub-aba *2️⃣ Diluição (FDT)*")
+    if pendencias:
+        st.warning("Para gerar o resultado em mg/kg, ainda falta:\n\n- " + "\n- ".join(pendencias))
         return
 
     with st.expander("📝 Cabeçalho do laudo (opcional)"):
