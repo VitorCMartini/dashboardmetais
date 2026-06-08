@@ -1371,54 +1371,79 @@ def _nomes_conc_atual(df):
 def _quant_sub_fdt(df):
     st.markdown("#### Passo 5 — Fator de Diluição Total (FDT = FD1 × FD2)")
 
+    # O rádio serve só para baixar o template certo. O cálculo identifica a matriz
+    # de CADA arquivo automaticamente pelas colunas — não depende desta escolha.
     opcoes = dilution.listar_matrizes()
     rotulos = {k: (rot if disp else f"{rot} (em breve)") for k, rot, disp in opcoes}
     disponiveis = [k for k, _, disp in opcoes if disp]
 
-    matriz = st.radio(
-        "Matriz analisada:",
+    matriz_tpl = st.radio(
+        "Baixar template de massas para a matriz:",
         options=[k for k, _, _ in opcoes],
         format_func=lambda k: rotulos[k],
         horizontal=True,
         key='quant_matriz',
     )
-
-    if matriz not in disponiveis:
-        st.info(
-            "🚧 Matriz ainda não implementada. Deixe um arquivo-modelo de massas desta matriz "
-            "para configurarmos o cálculo de FD1 (chaminé / mel)."
+    if matriz_tpl in disponiveis:
+        st.download_button(
+            "📥 Baixar template (em branco)",
+            data=dilution.gerar_template_massas(matriz_tpl),
+            file_name=f"template_massas_{matriz_tpl}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key='btn_tpl_massas',
         )
-        return
+    else:
+        st.caption("🚧 Template desta matriz em breve (chaminé / mel).")
 
-    st.download_button(
-        "📥 Baixar template de massas (em branco)",
-        data=dilution.gerar_template_massas(matriz),
-        file_name=f"template_massas_{matriz}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key='btn_tpl_massas',
-    )
     st.caption(
-        "Preencha o template com as massas pesadas e a diluição do ICP-OES, depois faça o upload abaixo."
+        "Você pode enviar **mais de um arquivo** de massas (lotes diferentes, ou Pólen + MPA juntos). "
+        "A matriz de cada arquivo é **detectada automaticamente** e todos os FDTs são somados."
     )
-
-    arq = st.file_uploader(
-        "Upload do arquivo de massas preenchido:",
-        type=['xlsx', 'xls'], key='upl_massas',
+    arquivos = st.file_uploader(
+        "Upload de um ou mais arquivos de massas:",
+        type=['xlsx', 'xls'],
+        accept_multiple_files=True,
+        key='upl_massas',
     )
-    if arq is None:
+    if not arquivos:
         st.info("📥 Aguardando o upload das massas para calcular o FDT.")
+        st.session_state.pop('quant_fdt', None)
+        st.session_state.pop('quant_fdt_map', None)
         return
 
-    try:
-        fdt, fd1, fd2 = dilution.calcular_fdt_completo(arq, matriz)
-    except Exception as e:
-        st.error(f"❌ Erro ao calcular o FDT: {e}")
+    # Processa cada arquivo (auto-detecta matriz) e acumula os FDTs.
+    partes = []
+    for arq in arquivos:
+        try:
+            fdt_i, mat = dilution.processar_arquivo_massas(arq)
+            fdt_i = fdt_i.copy()
+            fdt_i['Arquivo'] = arq.name
+            fdt_i['Matriz'] = dilution.MATRIZES[mat]['rotulo']
+            partes.append(fdt_i)
+            st.caption(
+                f"✓ **{arq.name}** · matriz **{dilution.MATRIZES[mat]['rotulo']}** · "
+                f"{int(fdt_i['Casado'].sum())} amostra(s) com FDT"
+            )
+        except Exception as e:
+            st.error(f"❌ {arq.name}: {e}")
+
+    if not partes:
+        st.session_state.pop('quant_fdt', None)
+        st.session_state.pop('quant_fdt_map', None)
         return
 
+    fdt = pd.concat(partes, ignore_index=True)
+    n_antes = len(fdt)
+    fdt = fdt.drop_duplicates(subset='chave', keep='first').reset_index(drop=True)
+    n_dups = n_antes - len(fdt)
     st.session_state['quant_fdt'] = fdt
-    st.success(f"✅ FDT calculado · {int(fdt['Casado'].sum())} amostra(s) com FD1 e FD2 casados.")
 
-    with st.expander("Ver tabela de FDT (FD1, FD2, FDT, FDT mg/kg)", expanded=False):
+    msg = f"✅ FDT consolidado de **{len(partes)}** arquivo(s) · {int(fdt['Casado'].sum())} amostra(s)."
+    if n_dups:
+        msg += f" ({n_dups} ID(s) duplicado(s) entre arquivos — mantido o 1º.)"
+    st.success(msg)
+
+    with st.expander("Ver tabela de FDT (FD1, FD2, FDT, FDT mg/kg, Arquivo, Matriz)", expanded=False):
         st.dataframe(fdt, use_container_width=True, height=320)
 
     # Casamento com a tabela de concentração
@@ -1430,8 +1455,12 @@ def _quant_sub_fdt(df):
     c1.metric("✅ Amostras casadas (conc ↔ FDT)", len(fdt_map))
     c2.metric("⚠️ Sem FDT", len(faltando))
     if faltando:
-        with st.expander(f"⚠️ {len(faltando)} amostra(s) de concentração sem FDT — revisar nomes"):
+        with st.expander(f"⚠️ {len(faltando)} amostra(s) de concentração sem FDT"):
             st.write(faltando)
+            st.caption(
+                "Envie também o arquivo de massas que contém estas amostras "
+                "(ou ajuste os nomes para casar com os IDs das massas)."
+            )
 
 
 def _quant_sub_tr(df):

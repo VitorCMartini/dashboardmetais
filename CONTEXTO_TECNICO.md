@@ -7149,6 +7149,12 @@ concentração↔massas via `normalizar_id` (`PQ25-1009A`↔`1009A`; `Nist2A/Nis
 - Implementar matrizes chaminé e mel quando os modelos chegarem.
 - Geração de laudo PDF/ABNT (Tab 3 "Relatórios").
 
+### 🔧 Correções pós-teste (mesma sessão)
+- **Tabelas RSD reativas:** o Passo 1 gera e salva as tabelas automaticamente (sem botão) — antes dependia de um clique e os passos seguintes podiam "nunca satisfazer".
+- **Avisos de pendência específicos** (Passos 3/4): indicam exatamente o que falta — Passo 1 (seleção) vs Passo 5 (massas/FDT).
+- **FDT multi-arquivo + auto-detecção de matriz:** o uploader aceita **vários** arquivos de massas (lotes diferentes ou Pólen + MPA juntos); a matriz de cada arquivo é **detectada pelas colunas** (`detectar_matriz`), corrigindo o erro de subir MPA com Pólen selecionado; e todos os FDTs são **somados** (`pd.concat` + dedup por `chave`), corrigindo o "carrego uma, descarrega a outra".
+- `dilution.ler_planilha_massas`: `seek(0)` para releitura robusta do upload entre reruns.
+
 **Fim do Log de Sessão - 08/06/2026 (Quantificação µg/L → mg/kg)**
 
 ---

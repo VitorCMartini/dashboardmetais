@@ -214,7 +214,7 @@ def _achar_sheet(sheets: List[str], termos: List[str]) -> Optional[str]:
     return None
 
 
-def ler_planilha_massas(arquivo, matriz: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def ler_planilha_massas(arquivo, matriz: Optional[str] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Lê o arquivo de massas (template preenchido) e devolve (df_massa, df_diluicao).
     Localiza as abas de forma tolerante a variações de nome.
@@ -311,6 +311,38 @@ def calcular_fdt_completo(arquivo, matriz: str) -> Tuple[pd.DataFrame, pd.DataFr
     df_fd2 = calcular_fd2(df_dil)
     df_fdt = calcular_fdt(df_fd1, df_fd2)
     return df_fdt, df_fd1, df_fd2
+
+
+def detectar_matriz(df_massa: pd.DataFrame) -> Optional[str]:
+    """
+    Identifica a matriz pelas colunas da aba de massas: 'polen', 'mpa' ou None.
+    Pólen tem M1–M4 / 'Tubo de Centrifuga'; MPA tem 'Massa da Amostra' + 'frasco vazio'.
+    """
+    blob = " | ".join(_norm(c) for c in df_massa.columns)
+    if "(m4)" in blob or "tubo de centrifuga" in blob:
+        return "polen"
+    if "massa da amostra" in blob and "frasco vazio" in blob:
+        return "mpa"
+    return None
+
+
+def processar_arquivo_massas(arquivo) -> Tuple[pd.DataFrame, str]:
+    """
+    Lê um arquivo de massas, detecta a matriz automaticamente e calcula o FDT.
+
+    Returns (df_fdt, matriz). Levanta ValueError se a matriz não for reconhecida.
+    """
+    df_massa, df_dil = ler_planilha_massas(arquivo)
+    matriz = detectar_matriz(df_massa)
+    if matriz is None:
+        raise ValueError(
+            "não reconheci a matriz pelas colunas (esperado Pólen com M1–M4, ou "
+            f"MPA com 'Massa da Amostra' + 'frasco vazio'). Colunas: {list(df_massa.columns)}"
+        )
+    df_fd1 = calcular_fd1(df_massa, matriz)
+    df_fd2 = calcular_fd2(df_dil)
+    df_fdt = calcular_fdt(df_fd1, df_fd2)
+    return df_fdt, matriz
 
 
 # ============================================================
