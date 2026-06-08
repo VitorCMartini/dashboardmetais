@@ -7101,8 +7101,60 @@ Armazenamento:           ~10 MB (código + assets)
 
 ---
 
+## 📦 LOG DE SESSÃO: v2.7.0 — ETAPA DE QUANTIFICAÇÃO (µg/L → mg/kg)
+
+**Data:** 08 de junho de 2026
+**Versão:** v2.7.0 (Quantificação: FDT, TR% NIST e Resultado Final)
+**Objetivo:** Estender o pipeline além do QC, implementando o "Passo a passo Tratamento de dados – ICP-MS": redução por RSD, Fator de Diluição Total (FDT), Taxa de Recuperação (TR%) do material de referência e conversão para mg/kg, com tabela final por amostra (triplicata e média).
+
+### 🎯 Decisões de produto (confirmadas com o usuário)
+1. **Fonte das concentrações:** sessão em memória — usa `st.session_state['df_com_qc']` + `resultados_qc` do QC (Tab 1).
+2. **Seleção elemento/modo:** híbrido — padrão **No Gas** (mais estável/indicado); **He por exceção** (reduz interferência, alguns elementos em validação), ajustável por espécie; TR% do QC como sugestão.
+3. **RSD:** gera **as duas saídas** simultaneamente (≤15% e ≤25%).
+4. **Passo 2 (acima da curva → ICP-OES):** apenas sinalizar (flag ICPOES do QC) + override manual; automação por upload fica para depois.
+
+### 🧪 Fórmulas implementadas (fiéis às planilhas do laboratório)
+```
+FD1 (Pólen) = Massa_Solução (M4−M3) ÷ Massa_amostra (M2−M1)   [prefere colunas explícitas de massa]
+FD1 (MPA)   = Massa_solução (F−E)     ÷ Massa_Amostra (pesada direto)
+FD2         = (H2O − frasco_vazio)    ÷ (alíquota − frasco_vazio)
+FDT         = FD1 × FD2
+FDT (mg/kg) = FDT ÷ 1000
+resultado_mg/kg = conc_µg/L × FDT(mg/kg)
+TR%         = (NIST_mg/kg ÷ Certificado) × 100   → red flag fora de 90–110%
+```
+Brancos de pólen usam massa nominal de amostra = **0,25 g** (sem pesagem). Matching de IDs
+concentração↔massas via `normalizar_id` (`PQ25-1009A`↔`1009A`; `Nist2A/Nist2B`→`NIST2`; `B4`↔`Branco 4`).
+
+### 🏗️ Arquivos
+- **Novos módulos** (`src/`):
+  - `reference_materials.py` — certificados (NIST 1515 com U95) + `calcular_tr_certificado` (flag 90–110). Hook p/ outros CRMs.
+  - `dilution.py` — `MATRIZES` (polen/mpa + stubs chaminé/mel), `gerar_template_massas`, `calcular_fd1/fd2/fdt`, `normalizar_id`, `construir_fdt_map`.
+  - `quantification.py` — `listar_especies`, `reduzir_tabela` (RSD), `converter_mgkg` (com `<LOD` pt-BR), `agregar_media`.
+- **`app.py`** — nova aba `🧪 Quantificação (mg/kg)` com 4 sub-tabs (Seleção & RSD · Diluição FDT · TR% NIST · Resultado mg/kg), gating por `session_state`.
+- **`test_quantificacao.py`** (gitignored) — testes de valores-ouro.
+
+### ✅ Verificação (reprodução exata da planilha do laboratório)
+- Testes unitários (FD1/FD2/FDT 997A, MPA 1134, TR%, normalização, média): **todos PASS**.
+- Integração end-to-end (ETL→QC→seleção→RSD→FDT→mg/kg→TR%): **`1009A` Al = 61,8877 mg/kg** (idêntico à aba `Dados processados` da planilha final); **Nist2A Al TR% = 102,8%**, **Nist3A = 96,9%** (idênticos à `Planilha10`).
+
+### 🔌 Ganchos de extensibilidade (futuro)
+- **Matrizes** chaminé/mel: stubs em `MATRIZES` (UI desabilita até implementar FD1).
+- **CRMs**: `CERTIFICADOS` aceita novos materiais (As/Se sem TR% no NIST 1515 — removidos em 2017).
+- **ICP-OES (passo 2)**: hoje override manual; gancho para upload de planilha ICP-OES.
+
+### 🎯 Próximos passos sugeridos
+- Verificação visual no app (`streamlit run app.py`) percorrendo as 4 sub-abas com login.
+- Automação completa do passo 2 (substituição ICP-OES por upload).
+- Implementar matrizes chaminé e mel quando os modelos chegarem.
+- Geração de laudo PDF/ABNT (Tab 3 "Relatórios").
+
+**Fim do Log de Sessão - 08/06/2026 (Quantificação µg/L → mg/kg)**
+
+---
+
 **Fim do Documento de Contexto Técnico**  
 _Este documento é vivo e será atualizado conforme o projeto evolui._
 
-**🎉 PROJETO EM PRODUÇÃO - FASE 2 CONCLUÍDA COM SUCESSO**
+**🎉 PROJETO EM PRODUÇÃO - ETAPA DE QUANTIFICAÇÃO (v2.7.0) IMPLEMENTADA E VALIDADA**
 

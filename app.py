@@ -21,6 +21,7 @@ Arquitetura:
 import streamlit as st
 import streamlit_authenticator as stauth
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
@@ -46,6 +47,9 @@ from src.visuals import (
     criar_matriz_flags_por_leitura,
     criar_resumo_qc_por_elemento
 )
+
+# Importar módulos da etapa de Quantificação (µg/L → mg/kg)
+from src import quantification, dilution, reference_materials
 
 
 # ============================================
@@ -309,18 +313,22 @@ def renderizar_dashboard(nome_usuario: str, username: str, authenticator):
         authenticator.logout('Sair', 'sidebar', key='btn_logout_auth')
     
     # Conteúdo principal
-    tab_dados, tab_analise, tab_relatorios = st.tabs([
+    tab_dados, tab_analise, tab_quant, tab_relatorios = st.tabs([
         "📊 Dados Processados",
         "📈 Análises",
+        "🧪 Quantificação (mg/kg)",
         "📄 Relatórios"
     ])
-    
+
     with tab_dados:
         renderizar_tab_dados(aplicar_filtro)
-    
+
     with tab_analise:
         renderizar_tab_analises()
-    
+
+    with tab_quant:
+        renderizar_tab_quantificacao()
+
     with tab_relatorios:
         st.info("🚧 **Em Desenvolvimento** - Geração de relatórios técnicos será implementada na próxima fase")
 
@@ -1199,6 +1207,361 @@ def renderizar_tab_analises():
         )
     else:
         st.warning("⚠️ Nenhuma estatística disponível para os elementos selecionados.")
+
+
+# ============================================
+# TAB 3 - QUANTIFICAÇÃO (µg/L → mg/kg)
+# ============================================
+
+def renderizar_tab_quantificacao():
+    """
+    Etapa de quantificação: a partir dos dados validados pelo QC, aplica RSD,
+    calcula o FDT (massas), verifica TR% do NIST e converte para mg/kg,
+    gerando a tabela final por amostra (triplicata e média).
+    """
+    st.markdown("### 🧪 Quantificação: µg/L → mg/kg (FDT, TR% e Resultado Final)")
+
+    if 'df_com_qc' not in st.session_state:
+        st.warning("⚠️ Processe os dados na aba '📊 Dados Processados' primeiro.")
+        return
+
+    df = st.session_state['df_com_qc']
+    resultados_qc = st.session_state.get('resultados_qc')
+
+    sub1, sub2, sub3, sub4 = st.tabs([
+        "1️⃣ Seleção & RSD",
+        "2️⃣ Diluição (FDT)",
+        "3️⃣ TR% (NIST)",
+        "4️⃣ Resultado mg/kg",
+    ])
+
+    with sub1:
+        _quant_sub_selecao_rsd(df, resultados_qc)
+    with sub2:
+        _quant_sub_fdt(df)
+    with sub3:
+        _quant_sub_tr(df)
+    with sub4:
+        _quant_sub_resultado(df)
+
+
+def _mostrar_tabela_destacada(tabela: pd.DataFrame, mask: pd.DataFrame):
+    """Exibe um DataFrame destacando em vermelho as células marcadas na máscara."""
+    def _style(_):
+        out = pd.DataFrame('', index=tabela.index, columns=tabela.columns)
+        for c in mask.columns:
+            if c in out.columns:
+                out.loc[mask[c].values, c] = 'background-color: #ffd6d6'
+        return out
+
+    styler = tabela.style.apply(_style, axis=None).format(precision=4, na_rep='—')
+    st.dataframe(styler, use_container_width=True, height=320)
+
+
+def _render_overrides_icpoes(df, cols_conc, classes):
+    """Passo 2: lista leituras acima da curva (flag ICPOES) e permite override manual do ICP-OES."""
+    st.caption(
+        "Amostras com concentração acima do último ponto da curva (flag ICPOES). "
+        "Informe o valor obtido no ICP-OES (µg/L) para substituir; deixe 0 para manter o valor original."
+    )
+    d = df[df['Tipo_Amostra'] == 'Sample'].copy()
+    d['Classe'] = d['Nome_Amostra'].map(quantification.classificar_amostra)
+    d = d[d['Classe'].isin(classes)]
+
+    overrides = st.session_state.get('quant_overrides', {})
+    achou = False
+    for c in cols_conc:
+        flag = c.replace('_Conc', '_Flag_ICPOES')
+        if flag not in d.columns:
+            continue
+        for _, r in d[d[flag] == True].iterrows():
+            achou = True
+            nome = r['Nome_Amostra']
+            atual = r[c]
+            val = st.number_input(
+                f"{nome} · {c.replace('_Conc', '')} (atual: {atual:.4f} µg/L)",
+                min_value=0.0, value=0.0, format="%.4f",
+                key=f"ovr_{nome}_{c}",
+            )
+            if val > 0:
+                overrides[(nome, c)] = val
+            else:
+                overrides.pop((nome, c), None)
+
+    if not achou:
+        st.success("✅ Nenhum valor acima da curva nas espécies/classes selecionadas.")
+    st.session_state['quant_overrides'] = overrides
+
+
+def _quant_sub_selecao_rsd(df, resultados_qc):
+    st.markdown("#### Passo 1 — Seleção de espécies e modo de análise")
+    st.caption(
+        "Padrão **No Gas** (mais estável e indicado). Marque **He** por exceção, "
+        "para elementos onde reduz interferências. As colunas TR% (do QC) ajudam a escolher o modo."
+    )
+
+    if 'quant_selecao' not in st.session_state:
+        st.session_state['quant_selecao'] = quantification.listar_especies(df, resultados_qc)
+
+    selecao = st.data_editor(
+        st.session_state['quant_selecao'],
+        key='editor_especies',
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            'Incluir': st.column_config.CheckboxColumn('Incluir'),
+            'Espécie': st.column_config.TextColumn('Espécie', disabled=True),
+            'Elemento': st.column_config.TextColumn('Elemento', disabled=True),
+            'Modo': st.column_config.SelectboxColumn('Modo', options=list(quantification.MODOS)),
+            'Modos_disp': st.column_config.TextColumn('Modos disp.', disabled=True),
+            'TR%_NoGas': st.column_config.NumberColumn('TR% NoGas', format="%.1f", disabled=True),
+            'TR%_He': st.column_config.NumberColumn('TR% He', format="%.1f", disabled=True),
+        },
+    )
+    st.session_state['quant_selecao'] = selecao
+    cols_conc = quantification.colunas_conc_escolhidas(selecao)
+    st.session_state['quant_cols_conc'] = cols_conc
+    st.info(f"🎯 {len(cols_conc)} espécie(s) selecionada(s).")
+
+    st.markdown("#### Passos 3-4 — Classes de amostra e RSD")
+    classes = st.multiselect(
+        "Classes de amostra a incluir na tabela:",
+        options=['Interesse', 'NIST', 'Branco', 'HNO3', 'Merck'],
+        default=list(quantification.CLASSES_PADRAO),
+        key='quant_classes',
+    )
+
+    with st.expander("⚠️ Passo 2 — Valores acima da curva (substituição manual por ICP-OES)"):
+        _render_overrides_icpoes(df, cols_conc, classes)
+
+    if st.button("🔄 Gerar tabelas reduzidas (RSD ≤15% e ≤25%)", type="primary", key="btn_reduzir"):
+        if not cols_conc:
+            st.error("Selecione ao menos uma espécie.")
+        elif not classes:
+            st.error("Selecione ao menos uma classe de amostra.")
+        else:
+            df_base = quantification.aplicar_override_icpoes(
+                df, st.session_state.get('quant_overrides', {})
+            )
+            tabelas = {}
+            for lim in (15.0, 25.0):
+                conc_view, mask, d_full = quantification.reduzir_tabela(
+                    df_base, cols_conc, lim, tuple(classes)
+                )
+                tabelas[lim] = {'conc': conc_view, 'mask': mask, 'full': d_full}
+            st.session_state['quant_tabelas_rsd'] = tabelas
+            st.success(f"✅ Tabelas geradas para {len(conc_view)} amostra(s).")
+
+    tabelas = st.session_state.get('quant_tabelas_rsd')
+    if tabelas:
+        for lim in (15.0, 25.0):
+            st.markdown(f"**📋 Tabela reduzida — RSD ≤ {int(lim)}%**  ·  células 🟥 = RSD acima do limite")
+            _mostrar_tabela_destacada(tabelas[lim]['conc'], tabelas[lim]['mask'])
+
+
+def _nomes_conc_atual(df):
+    """Nomes de amostra (da concentração) a casar com o FDT — usa a tabela reduzida se existir."""
+    tabelas = st.session_state.get('quant_tabelas_rsd')
+    if tabelas:
+        return tabelas[15.0]['conc']['Nome_Amostra'].astype(str).tolist()
+    d = df[df['Tipo_Amostra'] == 'Sample']
+    return d['Nome_Amostra'].astype(str).tolist()
+
+
+def _quant_sub_fdt(df):
+    st.markdown("#### Passo 5 — Fator de Diluição Total (FDT = FD1 × FD2)")
+
+    opcoes = dilution.listar_matrizes()
+    rotulos = {k: (rot if disp else f"{rot} (em breve)") for k, rot, disp in opcoes}
+    disponiveis = [k for k, _, disp in opcoes if disp]
+
+    matriz = st.radio(
+        "Matriz analisada:",
+        options=[k for k, _, _ in opcoes],
+        format_func=lambda k: rotulos[k],
+        horizontal=True,
+        key='quant_matriz',
+    )
+
+    if matriz not in disponiveis:
+        st.info(
+            "🚧 Matriz ainda não implementada. Deixe um arquivo-modelo de massas desta matriz "
+            "para configurarmos o cálculo de FD1 (chaminé / mel)."
+        )
+        return
+
+    st.download_button(
+        "📥 Baixar template de massas (em branco)",
+        data=dilution.gerar_template_massas(matriz),
+        file_name=f"template_massas_{matriz}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key='btn_tpl_massas',
+    )
+    st.caption(
+        "Preencha o template com as massas pesadas e a diluição do ICP-OES, depois faça o upload abaixo."
+    )
+
+    arq = st.file_uploader(
+        "Upload do arquivo de massas preenchido:",
+        type=['xlsx', 'xls'], key='upl_massas',
+    )
+    if arq is None:
+        st.info("📥 Aguardando o upload das massas para calcular o FDT.")
+        return
+
+    try:
+        fdt, fd1, fd2 = dilution.calcular_fdt_completo(arq, matriz)
+    except Exception as e:
+        st.error(f"❌ Erro ao calcular o FDT: {e}")
+        return
+
+    st.session_state['quant_fdt'] = fdt
+    st.success(f"✅ FDT calculado · {int(fdt['Casado'].sum())} amostra(s) com FD1 e FD2 casados.")
+
+    with st.expander("Ver tabela de FDT (FD1, FD2, FDT, FDT mg/kg)", expanded=False):
+        st.dataframe(fdt, use_container_width=True, height=320)
+
+    # Casamento com a tabela de concentração
+    nomes_conc = _nomes_conc_atual(df)
+    fdt_map, faltando = dilution.construir_fdt_map(nomes_conc, fdt)
+    st.session_state['quant_fdt_map'] = fdt_map
+
+    c1, c2 = st.columns(2)
+    c1.metric("✅ Amostras casadas (conc ↔ FDT)", len(fdt_map))
+    c2.metric("⚠️ Sem FDT", len(faltando))
+    if faltando:
+        with st.expander(f"⚠️ {len(faltando)} amostra(s) de concentração sem FDT — revisar nomes"):
+            st.write(faltando)
+
+
+def _quant_sub_tr(df):
+    st.markdown("#### Passo 6 — Taxa de Recuperação (TR%) do material de referência")
+
+    fdt_map = st.session_state.get('quant_fdt_map')
+    cols_conc = st.session_state.get('quant_cols_conc')
+    if not fdt_map or not cols_conc:
+        st.warning("⚠️ Complete o Passo 1 (Seleção) e o Passo 5 (FDT) primeiro.")
+        return
+
+    material = st.selectbox(
+        "Material de referência:",
+        reference_materials.materiais_disponiveis(),
+        key='quant_material',
+    )
+    st.caption("🚩 TR% fora da faixa 90–110% é destacada em vermelho (red flag).")
+
+    d = df[df['Tipo_Amostra'] == 'Sample'].copy()
+    d['Classe'] = d['Nome_Amostra'].map(quantification.classificar_amostra)
+    nist = d[d['Classe'] == 'NIST']
+    if len(nist) == 0:
+        st.info("ℹ️ Nenhuma amostra NIST encontrada nos dados.")
+        return
+
+    mgkg = quantification.converter_mgkg(nist, cols_conc, fdt_map)
+
+    for _, row in mgkg.iterrows():
+        nome = row['Nome_Amostra']
+        valores = {}
+        for c in cols_conc:
+            elem_col = c.replace('_Conc', '')
+            v = row.get(elem_col)
+            if isinstance(v, (int, float)) and not pd.isna(v):
+                valores[reference_materials.elemento_base(elem_col)] = v
+        tr = reference_materials.calcular_tr_certificado(valores, material)
+        st.markdown(f"**🧫 {nome}**")
+        _mostrar_tr(tr)
+
+
+def _mostrar_tr(tr: pd.DataFrame):
+    show = tr[tr['Status'] != 'Sem leitura'].reset_index(drop=True)
+    if len(show) == 0:
+        st.caption("Sem elementos certificados com leitura para esta amostra.")
+        return
+
+    disp = show[['Elemento', 'Medido_mgkg', 'Certificado', 'TR_pct', 'Status']].copy()
+    reds = show['Red_Flag'].values
+
+    def _style(_):
+        out = pd.DataFrame('', index=disp.index, columns=disp.columns)
+        out.loc[reds, :] = 'background-color: #ffd6d6'
+        return out
+
+    styler = disp.style.apply(_style, axis=None).format(
+        {'Medido_mgkg': '{:.4f}', 'Certificado': '{:.4f}', 'TR_pct': '{:.1f}'}
+    )
+    st.dataframe(styler, use_container_width=True, hide_index=True)
+
+
+def _aplicar_filtro_full(d_full: pd.DataFrame, mask: pd.DataFrame) -> pd.DataFrame:
+    """Zera (NaN) as concentrações cujo RSD ultrapassou o limite (versão filtrada)."""
+    d = d_full.copy().reset_index(drop=True)
+    for c in mask.columns:
+        if c in d.columns:
+            d.loc[mask[c].values, c] = np.nan
+    return d
+
+
+def _download_resultado(df_res: pd.DataFrame, base: str, meta: dict = None):
+    from io import BytesIO
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        startrow = 0
+        if meta:
+            meta_df = pd.DataFrame(list(meta.items()), columns=['Campo', 'Valor'])
+            meta_df.to_excel(writer, index=False, sheet_name='Resultado', startrow=0)
+            startrow = len(meta_df) + 2
+        df_res.to_excel(writer, index=False, sheet_name='Resultado', startrow=startrow)
+    buf.seek(0)
+    st.download_button(
+        "📥 Excel",
+        data=buf.getvalue(),
+        file_name=f"{base}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"dl_{base}",
+    )
+
+
+def _quant_sub_resultado(df):
+    st.markdown("#### Passos 7-8 — Resultado em mg/kg (triplicata e média)")
+
+    tabelas = st.session_state.get('quant_tabelas_rsd')
+    fdt_map = st.session_state.get('quant_fdt_map')
+    cols_conc = st.session_state.get('quant_cols_conc')
+
+    if not tabelas or not fdt_map or not cols_conc:
+        st.warning("⚠️ Complete o Passo 1 (Seleção & RSD) e o Passo 5 (FDT) primeiro.")
+        return
+
+    with st.expander("📝 Cabeçalho do laudo (opcional)"):
+        meta = {
+            'Solicitante': st.text_input("Solicitante", key='meta_solic'),
+            'Data': st.text_input("Data", value=datetime.now().strftime('%d/%m/%Y'), key='meta_data'),
+            'Equipamento': st.text_input("Equipamento", value="ICP-MS Agilent 7700x", key='meta_equip'),
+        }
+
+    filtrar = st.checkbox(
+        "Remover (deixar em branco) valores com RSD acima do limite",
+        value=False, key='quant_filtrar_rsd',
+    )
+
+    for lim in (15.0, 25.0):
+        st.markdown(f"### RSD ≤ {int(lim)}%")
+        d_full = tabelas[lim]['full']
+        if filtrar:
+            d_full = _aplicar_filtro_full(d_full, tabelas[lim]['mask'])
+
+        tri = quantification.converter_mgkg(d_full, cols_conc, fdt_map)
+        med = quantification.agregar_media(tri)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Triplicata (réplicas individuais)**")
+            st.dataframe(tri, use_container_width=True, height=340)
+            _download_resultado(tri, f"resultado_mgkg_triplicata_rsd{int(lim)}", meta)
+        with c2:
+            st.markdown("**Média por amostra**")
+            st.dataframe(med, use_container_width=True, height=340)
+            _download_resultado(med, f"resultado_mgkg_media_rsd{int(lim)}", meta)
 
 
 # ============================================
