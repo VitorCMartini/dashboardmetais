@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
 ![Pandas](https://img.shields.io/badge/Pandas-2.0+-green.svg)
-![Status](https://img.shields.io/badge/Status-v1.3.0-success.svg)
+![Status](https://img.shields.io/badge/Status-v2.7.0-success.svg)
 ![License](https://img.shields.io/badge/License-Internal-orange.svg)
 
 **Automação Analítica para Setor Ambiental e Laboratorial**
@@ -21,8 +21,10 @@ Aplicação web interativa (Streamlit) para análise, visualização e geração
 - ✅ **Controle de Acesso:** Sistema de autenticação com streamlit-authenticator
 - ✅ **Dashboard Interativo:** Interface web com Streamlit para visualização de dados
 - ✅ **Exportação:** Download de dados processados em Excel e CSV
-- 🚧 **Visualizações Avançadas:** Gráficos de concentrações elementares (próxima fase)
-- 🚧 **Relatórios Técnicos:** Geração de documentação analítica conforme padrões ABNT (planejado)
+- ✅ **Controle de Qualidade (QC):** Curva de calibração, Taxa de Recuperação (TR%) e flags ICPOES/RSD por leitura
+- ✅ **Quantificação (µg/L → mg/kg):** FDT (FD1×FD2) por matriz (Pólen/MPA), TR% do NIST e tabela final (triplicata e média)
+- ✅ **Deploy em produção:** Streamlit Community Cloud (SaaS multiusuário, CI/CD a partir do GitHub)
+- 🚧 **Relatórios Técnicos:** Geração de laudo PDF conforme padrões ABNT (planejado)
 
 ---
 
@@ -36,21 +38,22 @@ AutomacaoResultadosMetaisPesados/
 ├── 📦 requirements.txt           # Dependências Python
 ├── 🔒 .gitignore                 # Arquivos não versionados
 │
-├── 🚀 app.py                     # Aplicação Streamlit principal
-├── 🔐 gerar_hashes.py            # Script auxiliar para gerar senhas
+├── 🚀 app.py                     # Aplicação Streamlit principal (4 abas)
+├── 🔐 gerar_senhas_terminal.py   # Script auxiliar para gerar hashes de senha
 │
 ├── 📊 original.xlsx              # Dados brutos ICP-MS (não versionado)
 ├── 📖 metadados.xlsx             # Dicionário de dados (mapeamento de colunas)
 │
 ├── 📁 src/                       # Módulos de código
 │   ├── __init__.py
-│   └── etl.py                    # Pipeline ETL (v0.2.0)
-│
-├── 📁 data/                      # Dados processados (não versionado)
-│   └── (arquivos gerados)
+│   ├── etl.py                    # Pipeline ETL + Motor de QC (QualityControlEngine)
+│   ├── visuals.py                # Visualizações e métricas de QC (Plotly)
+│   ├── dilution.py               # FD1/FD2/FDT por matriz + auto-detecção
+│   ├── quantification.py         # Seleção, RSD, conversão mg/kg, média
+│   └── reference_materials.py    # Certificados (NIST 1515) + TR%
 │
 └── 📁 .streamlit/                # Configurações Streamlit (não versionado)
-    └── secrets.toml              # Credenciais (gerar com gerar_hashes.py)
+    └── secrets.toml              # Credenciais (gerar com gerar_senhas_terminal.py)
 ```
 
 ---
@@ -331,28 +334,25 @@ Use um dos usuários configurados no `secrets.toml`:
 - [x] Tratamento de valores < LOD com flags
 - [x] Exportação de dados limpos
 
-**✅ v1.3.0** - Infraestrutura e Segurança (ATUAL)
-- [x] Estrutura de pastas organizada
-- [x] Sistema de autenticação (streamlit-authenticator)
-- [x] Dashboard básico funcional
-- [x] Proteção de dados sensíveis (.gitignore)
-- [x] Interface em português (padrão ABNT)
-- [x] Exportação (Excel e CSV)
+**✅ v1.3.0** - Infraestrutura e Segurança
+- [x] Estrutura de pastas, autenticação, dashboard, proteção de dados, exportação
 
-**🚧 v2.0.0** - Visualizações Avançadas (PRÓXIMA)
-- [ ] Gráficos interativos (Plotly)
-  - [ ] Concentrações por elemento
-  - [ ] Séries temporais
-  - [ ] Mapa de calor de correlações
-- [ ] Estatísticas descritivas
-- [ ] Filtros avançados
-- [ ] Destacamento de valores < LOD em gráficos
+**✅ v2.4.2** - Motor de Controle de Qualidade (QC)
+- [x] Curva de calibração (A/B) e Taxa de Recuperação (TR%) com padrões Merck
+- [x] Flags ICPOES (acima da curva) e RSD por leitura; visão elemento-cêntrica
 
-**🔮 v3.0.0** - Geração de Relatórios
-- [ ] Exportação para PDF
-- [ ] Templates ABNT
-- [ ] Notas metodológicas automáticas
-- [ ] Gráficos incorporados no relatório
+**✅ v2.6.0** - Deploy em Produção
+- [x] Streamlit Community Cloud, CI/CD, gestão segura de credenciais (SaaS multiusuário)
+
+**✅ v2.7.0** - Quantificação (µg/L → mg/kg) (ATUAL)
+- [x] Seleção de espécies/modo, RSD (≤15% e ≤25%), tabela reduzida
+- [x] FDT (FD1×FD2) por matriz (Pólen/MPA), multi-arquivo com auto-detecção
+- [x] TR% do material de referência (NIST 1515) com red flag 90–110%
+- [x] Conversão para mg/kg e tabela final (triplicata e média)
+
+**🔮 v3.0.0** - Geração de Relatórios (PRÓXIMA)
+- [ ] Exportação para PDF, templates ABNT, laudo com gráficos
+- [ ] Matrizes adicionais (chaminé, mel) e demais materiais de referência
 
 ### Contribuindo
 
@@ -390,7 +390,7 @@ Este projeto é de uso interno para análises ambientais e laboratoriais.
 
 **Desenvolvedor:** Engenharia de Dados - Setor Ambiental  
 **Data de Criação:** 28 de fevereiro de 2026  
-**Última Atualização:** 28 de fevereiro de 2026 - **v1.3.0 (Security & Structure)**
+**Última Atualização:** 08 de junho de 2026 - **v2.7.0 (Quantificação µg/L → mg/kg)**
 
 ---
 
